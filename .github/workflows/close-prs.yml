@@ -1,0 +1,26 @@
+name: close-prs
+
+# Pull requests stay closed while the codebase is moving this fast (see the
+# README). This closes any opened PR with a pointer to the Discord.
+
+on:
+  pull_request_target:
+    types: [opened, reopened]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  close:
+    runs-on: ubuntu-latest
+    steps:
+      - run: >
+          gh pr close "$PR" --repo "$REPO" --comment
+          "Thanks for the interest! Pull requests stay closed while the
+          codebase is moving this fast — architecture questions, design
+          arguments, and bug reports are all welcome in the Discord
+          (https://discord.gg/53AXspMaN)."
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}

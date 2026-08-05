@@ -1,0 +1,117 @@
+# services.yaml — place at $KOYU_RUNTIME/services.yaml (your runtime dir).
+#
+# Rig: LIBERO sim eval of the cloned ACT policy. Every topic and event
+# channel is declared in its owning service's ipc block (law 5): declaration
+# buys the boot typecheck, bridge access, and flight recording (koyu tail /
+# koyu frame) via ipc_logger's auto-discovery.
+#
+# SUBSTITUTE before use (7 placeholders):
+#   {{VENV_PYTHON}}      absolute path to the rig venv python
+#                        (e.g. $KOYU_RIG/.venv/bin/python — explicit, so
+#                        supervisord can't resolve a template-local one)
+#   {{ACT_PROJECT_DIR}}  cloned ACT project dir (…/workspace/ACT__xxxxxxxx)
+#   {{ACT_RUN_DIR}}      cloned ACT run dir holding checkpoints/last.pt
+#   {{LIBERO_PROJECT_DIR}}  cloned LIBERO project dir (…/LIBERO__xxxxxxxx)
+#   {{RUNTIME_DIR}}      absolute path of this runtime dir ($KOYU_RUNTIME)
+#   {{CLONED_PROJECT_ID}}  proj_… minted by YOUR `koyu clone` (id_remaps)
+#   {{CLONED_RUN_ID}}      run_…  minted by YOUR `koyu clone` (id_remaps)
+# The cloud ids from koyu.dev do NOT belong here — clone mints fresh local
+# ids and prints the remap; provenance must use the local ones.
+#
+# Demo setting: --tasks 1 --trials 3 (a quick gapless session). Widen for
+# real evals; the same file drives both interactive (Controls page) and
+# --autorun modes.
+
+data_recorder:
+  cmd: [{{VENV_PYTHON}}, -m, koyu_runtime.services.data_recorder]
+  ipc:
+    blackboard:
+      writes:
+        recorder/telemetry: RecorderTelemetry
+      reads:
+        recorder/config: RecorderConfig
+    streams:
+      subscribes:
+        eval/obs/agentview: ImageCell
+        eval/obs/wrist: ImageCell
+        eval/obs/state: VecCell
+        eval/action: VecCell
+    events:
+      listens: [recorder/control]
+      notifies: [recorder/episode]
+
+bridge:
+  cmd: [{{VENV_PYTHON}}, -m, koyu_runtime.services.bridge]
+  ipc:
+    blackboard:
+      reads:
+        recorder/telemetry: RecorderTelemetry
+        eval/telemetry: EvalTelemetry
+    streams:
+      subscribes:
+        eval/obs/agentview: ImageCell
+        eval/obs/wrist: ImageCell
+        eval/obs/state: VecCell
+        eval/action: VecCell
+        eval/context: ContextCell
+    events:
+      listens: [eval/control, recorder/control, recorder/episode]
+      notifies: [eval/control, recorder/control]
+
+ipc_logger:
+  cmd: [{{VENV_PYTHON}}, -m, koyu_runtime.services.ipc_logger]
+  # NO ipc block on purpose: it auto-discovers every declared topic and event
+  # channel from the other stanzas and flight-records them.
+
+act_policy:
+  cmd: [{{VENV_PYTHON}},
+        {{ACT_PROJECT_DIR}}/serve.py,
+        --run, {{ACT_RUN_DIR}},
+        --checkpoint, last.pt,
+        --ns, eval]
+  env:
+    CUDA_VISIBLE_DEVICES: "0"
+  stopwaitsecs: 30
+  ipc:
+    streams:
+      subscribes:
+        eval/obs/agentview: ImageCell
+        eval/obs/wrist: ImageCell
+        eval/obs/state: VecCell
+        eval/context: ContextCell
+      publishes:
+        eval/action: VecCell
+
+libero_eval:
+  cmd: [{{VENV_PYTHON}},
+        {{LIBERO_PROJECT_DIR}}/eval.py,
+        --suite, libero_spatial,
+        --tasks, "1",
+        --trials, "3",
+        --manifest, eval-libero-spatial,
+        --source-project, {{CLONED_PROJECT_ID}},
+        --source-run, {{CLONED_RUN_ID}},
+        --source-checkpoint, last.pt,
+        --policy-name, ACT,
+        --out, {{RUNTIME_DIR}}/results_libero_spatial.json]
+  env:
+    MUJOCO_GL: egl
+    CUDA_VISIBLE_DEVICES: "0"
+  stopwaitsecs: 30
+  ipc:
+    blackboard:
+      writes:
+        eval/telemetry: EvalTelemetry
+      reads:
+        recorder/telemetry: RecorderTelemetry
+    streams:
+      publishes:
+        eval/obs/agentview: ImageCell
+        eval/obs/wrist: ImageCell
+        eval/obs/state: VecCell
+        eval/context: ContextCell
+      subscribes:
+        eval/action: VecCell
+    events:
+      listens: [eval/control]
+      notifies: [recorder/control]

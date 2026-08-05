@@ -1,0 +1,43 @@
+# ---------------------------------------------------------------------------
+# APPEND to koyu-runtime/koyu_runtime/ipc/types.py (after RecorderConfig).
+#
+# Eval contract cells — mirrored from the LIBERO template's eval_contract.py
+# (policy <-> env wire format over iceoryx2 streams). Layouts identical:
+# additive evolution only, per law 4. The boot typecheck resolves these by
+# class name from services.yaml ipc blocks.
+# ---------------------------------------------------------------------------
+
+EVAL_MAX_DIM = 32          # vector cell capacity (state 9, action 7 today)
+EVAL_MAX_HW = 256          # image cell capacity: MAX_HW^2 * 3 bytes
+EVAL_TASK_LEN = 256
+
+
+class ImageCell(ctypes.Structure):
+    _fields_ = [("timestamp", ctypes.c_double), ("frame_id", ctypes.c_uint64),
+                ("episode_id", ctypes.c_uint64), ("width", ctypes.c_uint32),
+                ("height", ctypes.c_uint32), ("channels", ctypes.c_uint32),
+                ("_pad", ctypes.c_uint32), ("data", ctypes.c_uint8 * (EVAL_MAX_HW * EVAL_MAX_HW * 3))]
+
+
+class VecCell(ctypes.Structure):
+    _fields_ = [("timestamp", ctypes.c_double), ("frame_id", ctypes.c_uint64),
+                ("episode_id", ctypes.c_uint64), ("valid_len", ctypes.c_uint32),
+                ("_pad", ctypes.c_uint32), ("values", ctypes.c_float * EVAL_MAX_DIM)]
+
+
+class ContextCell(ctypes.Structure):
+    _fields_ = [("timestamp", ctypes.c_double), ("frame_id", ctypes.c_uint64),
+                ("episode_id", ctypes.c_uint64), ("task", ctypes.c_char * EVAL_TASK_LEN)]
+
+
+class EvalTelemetry(ctypes.Structure):
+    """Eval driver's live state, published latest-value on ``eval/telemetry``.
+    state: 0 idle | 1 running | 2 stopped. episode/step index the current
+    rollout; trials_* and successes roll the plan up; task is the current
+    LIBERO task string."""
+    _fields_ = [("timestamp", ctypes.c_double), ("frame_id", ctypes.c_uint64),
+                ("state", ctypes.c_uint8), ("_pad", ctypes.c_uint8 * 7),
+                ("episode", ctypes.c_uint32), ("step", ctypes.c_uint32),
+                ("successes", ctypes.c_uint32), ("trials_done", ctypes.c_uint32),
+                ("trials_total", ctypes.c_uint32), ("_pad2", ctypes.c_uint32),
+                ("task", ctypes.c_char * 128)]
